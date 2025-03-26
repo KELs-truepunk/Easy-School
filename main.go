@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/mymmrac/telego"
@@ -10,122 +11,205 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
-var broker, username, password = "tcp://m7.wqtt.ru:15128", "u_QPTT9R", "fAhauOpC"
-
-func mqtt32() {
-
-	// Создание клиента
-	opts := MQTT.NewClientOptions().AddBroker(broker)
-	opts.SetUsername(username)
-	opts.SetPassword(password)
-	opts.SetClientID("go_mqtt_client")
-
-	// Создание клиента
-	client := MQTT.NewClient(opts)
-
-	// Подключение к брокеру
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
-		os.Exit(1)
-	}
-	defer client.Disconnect(250)
-
-	// публикация сообщения
-	token := client.Publish("new/button", 0, false, "45")
-	token.Wait()
-	fmt.Println("Message #32 published")
+// Конфигурационные параметры
+type Config struct {
+	MQTTBroker   string
+	MQTTUsername string
+	MQTTPassword string
+	BotToken     string
 }
 
-func mqtt33() {
+// Room представляет информацию о кабинете
+type Room struct {
+	ID      int
+	Name    string
+	Command string
+	Topic   string
+	Message string
+}
 
-	// Создание клиента
-	opts := MQTT.NewClientOptions().AddBroker(broker)
-	opts.SetUsername(username)
-	opts.SetPassword(password)
-	opts.SetClientID("go_mqtt_client")
-
-	// Создание клиента
-	client := MQTT.NewClient(opts)
-
-	// Подключение к брокеру
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
-		os.Exit(1)
+var (
+	config = Config{
+		MQTTBroker:   "tcp://m7.wqtt.ru:15128",
+		MQTTUsername: "u_QPTT9R",
+		MQTTPassword: "fAhauOpC",
+		BotToken:     "7827011556:AAEW2JiNoBi86IbqPK656Pi9_4KAwjk3pFI",
 	}
-	defer client.Disconnect(250)
 
-	// публикация сообщения
-	token := client.Publish("new/button", 0, false, "46")
+	// Список доступных кабинетов
+	rooms = []Room{
+		{
+			ID:      32,
+			Name:    "Кабинет №32",
+			Command: "open_lock32",
+			Topic:   "new/button",
+			Message: "32",
+		},
+		{
+			ID:      33,
+			Name:    "Кабинет №33",
+			Command: "open_lock33",
+			Topic:   "new/button",
+			Message: "33",
+		},
+	}
+
+	mqttClient MQTT.Client
+	clientOnce sync.Once
+)
+
+// getMQTTClient возвращает singleton клиента MQTT
+func getMQTTClient() (MQTT.Client, error) {
+	var err error
+	clientOnce.Do(func() {
+		opts := MQTT.NewClientOptions().AddBroker(config.MQTTBroker)
+		opts.SetUsername(config.MQTTUsername)
+		opts.SetPassword(config.MQTTPassword)
+		opts.SetClientID("go_mqtt_client")
+
+		client := MQTT.NewClient(opts)
+		if token := client.Connect(); token.Wait() && token.Error() != nil {
+			err = token.Error()
+			return
+		}
+		mqttClient = client
+	})
+
+	return mqttClient, err
+}
+
+// publishMQTTMessage публикует сообщение в MQTT
+func publishMQTTMessage(topic, message string) error {
+	client, err := getMQTTClient()
+	if err != nil {
+		return fmt.Errorf("MQTT connection failed: %w", err)
+	}
+
+	token := client.Publish(topic, 0, false, message)
 	token.Wait()
-	fmt.Println("Message #33 published")
+	if token.Error() != nil {
+		return fmt.Errorf("MQTT publish failed: %w", token.Error())
+	}
+
+	return nil
+}
+
+func createKeyboard() *telego.ReplyKeyboardMarkup {
+	// Количество кнопок в строке
+	buttonsPerRow := 2
+
+	// Создаем слайс для всех строк
+	rows := make([][]telego.KeyboardButton, 0)
+
+	// Создаем временную строку
+	currentRow := make([]telego.KeyboardButton, 0, buttonsPerRow)
+
+	// Добавляем кнопки для кабинетов
+	for _, room := range rooms {
+		btn := tu.KeyboardButton("/" + room.Command)
+		currentRow = append(currentRow, btn)
+
+		// Если строка заполнена, добавляем в rows и создаем новую
+		if len(currentRow) >= buttonsPerRow {
+			rows = append(rows, currentRow)
+			currentRow = make([]telego.KeyboardButton, 0, buttonsPerRow)
+		}
+	}
+
+	// Добавляем оставшиеся кнопки, если они есть
+	if len(currentRow) > 0 {
+		rows = append(rows, currentRow)
+	}
+
+	// Добавляем кнопку помощи в отдельную строку
+	rows = append(rows, tu.KeyboardRow(
+		tu.KeyboardButton("/help"),
+	))
+
+	return tu.Keyboard(rows...).
+		WithResizeKeyboard(). // Автоматическое изменение размера
+		WithOneTimeKeyboard() // Скрытие клавиатуры после использования
 }
 
 func main() {
-	botToken := "7827011556:AAEW2JiNoBi86IbqPK656Pi9_4KAwjk3pFI"         //токен для тг-бота
-	bot, err := telego.NewBot(botToken, telego.WithDefaultDebugLogger()) //инициализация бота
-	//проверка на ошибки
+	// Инициализация бота
+	bot, err := telego.NewBot(config.BotToken, telego.WithDefaultDebugLogger())
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("Failed to create bot: %v\n", err)
 		os.Exit(1)
 	}
-	//клавиатура для tg-бота
-	keyboard := tu.Keyboard(
-		tu.KeyboardRow(
 
-			tu.KeyboardButton("/open_lock32"),
-			tu.KeyboardButton("/open_lock33"),
-		),
-		tu.KeyboardRow(
+	// Получение обновлений
+	updates, err := bot.UpdatesViaLongPolling(nil)
+	if err != nil {
+		fmt.Printf("Failed to get updates: %v\n", err)
+		os.Exit(1)
+	}
 
-			tu.KeyboardButton("/help"),
-		),
-	)
-	updates, _ := bot.UpdatesViaLongPolling(nil)
-	bh, _ := th.NewBotHandler(bot, updates)
-	defer bh.Stop()             //остановка Хендлов(для кондийций)
-	defer bot.StopLongPolling() //стек
+	// Создание обработчика
+	bh, err := th.NewBotHandler(bot, updates)
+	if err != nil {
+		fmt.Printf("Failed to create bot handler: %v\n", err)
+		os.Exit(1)
+	}
 
-	//обработка команды /start
-	bh.Handle(func(bot *telego.Bot, update telego.Update) {
+	defer func() {
+		bh.Stop()
+		bot.StopLongPolling()
+		if mqttClient != nil && mqttClient.IsConnected() {
+			mqttClient.Disconnect(250)
+		}
+	}()
 
-		chatID := tu.ID(update.Message.Chat.ID)
-		message := tu.Message(
-			chatID,
-			"MQTT-панель для Системы контроля и управления доступом.Откройте доступные Вам кабинеты").WithReplyMarkup(keyboard)
-		_, _ = bot.SendMessage(message)
+	keyboard := createKeyboard()
 
-	}, th.CommandEqual("start"))
-
-	//обработчик команды /help
+	// Обработчик команды /start
 	bh.Handle(func(bot *telego.Bot, update telego.Update) {
 		chatID := tu.ID(update.Message.Chat.ID)
 		message := tu.Message(
 			chatID,
-			" Cоздано на языке Go с использованием библиотек 'TeleGO' и 'Paho-MQTT', по всем вопросам ").WithReplyMarkup(keyboard)
-		_, _ = bot.SendMessage(message)
-
-	}, th.CommandEqual("help"))
-	//обработчик комманды для открытия двери
-	bh.Handle(func(bot *telego.Bot, update telego.Update) {
-		chatID := tu.ID(update.Message.Chat.ID)
-		message := tu.Message(
-			chatID,
-			"Кабинет №32 открыт!",
+			"MQTT-панель для Системы контроля и управления доступом. Откройте доступные Вам кабинеты",
 		).WithReplyMarkup(keyboard)
 		_, _ = bot.SendMessage(message)
-		mqtt32()
-	}, th.CommandEqual("open_lock32"))
+	}, th.CommandEqual("start"))
+
+	// Обработчик команды /help
 	bh.Handle(func(bot *telego.Bot, update telego.Update) {
 		chatID := tu.ID(update.Message.Chat.ID)
 		message := tu.Message(
 			chatID,
-			"Кабинет №33 открыт!",
-		)
+			"Этот бот создан для управления системой контроля доступа.\n\n"+
+				"Используйте кнопки ниже для открытия соответствующих кабинетов.\n\n"+
+				"Создано на языке Go с использованием библиотек 'TeleGO' и 'Paho-MQTT'.",
+		).WithReplyMarkup(keyboard)
 		_, _ = bot.SendMessage(message)
-		mqtt33()
-	}, th.CommandEqual("open_lock33"))
-	bh.Handle(func(bot *telego.Bot, update telego.Update) {
+	}, th.CommandEqual("help"))
 
-	}, th.CommandEqual("иван_богданов"))
+	// Обработчики для каждого кабинета
+	for _, room := range rooms {
+		room := room // создаем локальную копию для замыкания
+		bh.Handle(func(bot *telego.Bot, update telego.Update) {
+			chatID := tu.ID(update.Message.Chat.ID)
+
+			// Отправляем сообщение об открытии
+			_, _ = bot.SendMessage(tu.Message(
+				chatID,
+				fmt.Sprintf("%s открыт!", room.Name),
+			).WithReplyMarkup(keyboard))
+
+			// Публикуем MQTT сообщение
+			if err := publishMQTTMessage(room.Topic, room.Message); err != nil {
+				_, _ = bot.SendMessage(tu.Message(
+					chatID,
+					fmt.Sprintf("Ошибка при открытии %s: %v", room.Name, err),
+				))
+				return
+			}
+
+			fmt.Printf("%s opened\n", room.Name)
+		}, th.CommandEqual(room.Command))
+	}
+
+	// Запуск обработчика
 	bh.Start()
 }
