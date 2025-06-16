@@ -11,7 +11,7 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
-// Конфигурационные параметры
+// Конфигурация
 type Config struct {
 	MQTTBroker   string
 	MQTTUsername string
@@ -19,7 +19,7 @@ type Config struct {
 	BotToken     string
 }
 
-// Room представляет информацию о кабинете
+// Информацию о кабинете
 type Room struct {
 	ID      int
 	Name    string
@@ -52,6 +52,13 @@ var (
 			Topic:   "new/button",
 			Message: "33",
 		},
+		{
+			ID:      45,
+			Name:    "Кабинет №45",
+			Command: "open_lock45",
+			Topic:   "new/button",
+			Message: "45",
+		},
 	}
 
 	mqttClient MQTT.Client
@@ -65,7 +72,7 @@ func getMQTTClient() (MQTT.Client, error) {
 		opts := MQTT.NewClientOptions().AddBroker(config.MQTTBroker)
 		opts.SetUsername(config.MQTTUsername)
 		opts.SetPassword(config.MQTTPassword)
-		opts.SetClientID("go_mqtt_client")
+		opts.SetClientID("go_mqtt_telegram_bot")
 
 		client := MQTT.NewClient(opts)
 		if token := client.Connect(); token.Wait() && token.Error() != nil {
@@ -78,7 +85,7 @@ func getMQTTClient() (MQTT.Client, error) {
 	return mqttClient, err
 }
 
-// publishMQTTMessage публикует сообщение в MQTT
+// публикация сообщение в MQTT
 func publishMQTTMessage(topic, message string) error {
 	client, err := getMQTTClient()
 	if err != nil {
@@ -95,7 +102,7 @@ func publishMQTTMessage(topic, message string) error {
 }
 
 func createKeyboard() *telego.ReplyKeyboardMarkup {
-	// Количество кнопок в строке
+	// Количество кнопок в строке(может изменяться по мере добавления дверей)
 	buttonsPerRow := 2
 
 	// Создаем слайс для всех строк
@@ -106,10 +113,11 @@ func createKeyboard() *telego.ReplyKeyboardMarkup {
 
 	// Добавляем кнопки для кабинетов
 	for _, room := range rooms {
-		btn := tu.KeyboardButton("/" + room.Command)
+		// Здеся используем название кабинета вместо команды
+		btn := tu.KeyboardButton(room.Name)
 		currentRow = append(currentRow, btn)
 
-		// Если строка заполнена, добавляем в rows и создаем новую
+		// Если строка заполнена, то делаем новую
 		if len(currentRow) >= buttonsPerRow {
 			rows = append(rows, currentRow)
 			currentRow = make([]telego.KeyboardButton, 0, buttonsPerRow)
@@ -123,7 +131,7 @@ func createKeyboard() *telego.ReplyKeyboardMarkup {
 
 	// Добавляем кнопку помощи в отдельную строку
 	rows = append(rows, tu.KeyboardRow(
-		tu.KeyboardButton("/help"),
+		tu.KeyboardButton("О боте"),
 	))
 
 	return tu.Keyboard(rows...).
@@ -168,47 +176,51 @@ func main() {
 		chatID := tu.ID(update.Message.Chat.ID)
 		message := tu.Message(
 			chatID,
-			"MQTT-панель для Системы контроля и управления доступом. Откройте доступные Вам кабинеты",
+			"🚪 MQTT-панель для Системы контроля и управления доступом\n\n"+
+				"Выберите кабинет, который хотите открыть:",
 		).WithReplyMarkup(keyboard)
 		_, _ = bot.SendMessage(message)
 	}, th.CommandEqual("start"))
 
-	// Обработчик команды /help
+	// Обработчик текстовых сообщений (нажатие на кнопки с названиями кабинетов)
 	bh.Handle(func(bot *telego.Bot, update telego.Update) {
+		text := update.Message.Text
 		chatID := tu.ID(update.Message.Chat.ID)
-		message := tu.Message(
-			chatID,
-			"Этот бот создан для управления системой контроля доступа.\n\n"+
-				"Используйте кнопки ниже для открытия соответствующих кабинетов.\n\n"+
-				"Создано на языке Go с использованием библиотек 'TeleGO' и 'Paho-MQTT'.",
-		).WithReplyMarkup(keyboard)
-		_, _ = bot.SendMessage(message)
-	}, th.CommandEqual("help"))
 
-	// Обработчики для каждого кабинета
-	for _, room := range rooms {
-		room := room // создаем локальную копию для замыкания
-		bh.Handle(func(bot *telego.Bot, update telego.Update) {
-			chatID := tu.ID(update.Message.Chat.ID)
-
-			// Отправляем сообщение об открытии
-			_, _ = bot.SendMessage(tu.Message(
-				chatID,
-				fmt.Sprintf("%s открыт!", room.Name),
-			).WithReplyMarkup(keyboard))
-
-			// Публикуем MQTT сообщение
-			if err := publishMQTTMessage(room.Topic, room.Message); err != nil {
+		// Ищем кабинет по названию
+		for _, room := range rooms {
+			if room.Name == text {
+				// Отправляем сообщение об открытии
 				_, _ = bot.SendMessage(tu.Message(
 					chatID,
-					fmt.Sprintf("Ошибка при открытии %s: %v", room.Name, err),
-				))
+					fmt.Sprintf("🔓 %s открыт!", room.Name),
+				).WithReplyMarkup(keyboard))
+
+				// Публикуем MQTT сообщение
+				if err := publishMQTTMessage(room.Topic, room.Message); err != nil {
+					_, _ = bot.SendMessage(tu.Message(
+						chatID,
+						fmt.Sprintf("❌ Ошибка при открытии %s: %v", room.Name, err),
+					))
+					return
+				}
+
+				fmt.Printf("%s opened\n", room.Name)
 				return
 			}
+		}
 
-			fmt.Printf("%s opened\n", room.Name)
-		}, th.CommandEqual(room.Command))
-	}
+		// Обработка кнопки "Помощь"
+		if text == "О боте" {
+			_, _ = bot.SendMessage(tu.Message(
+				chatID,
+				"ℹ️ Этот бот создан для управления системой контроля доступа.\n\n"+
+					"• Выберите нужный кабинет из списка\n"+
+					"• Бот отправит команду на открытие двери\n\n"+
+					"Создано на языке Go с использованием библиотек 'TeleGO' и 'Paho-MQTT'.",
+			).WithReplyMarkup(keyboard))
+		}
+	}, th.AnyMessage())
 
 	// Запуск обработчика
 	bh.Start()
