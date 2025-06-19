@@ -11,13 +11,13 @@
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Создаем подключение с MFRC522
 
 //Подключение к Wi-Fi
-const char *ssid = "DECO222";            // Имя вайфай точки доступа
-const char *pass = "66065401!";          // Пароль от точки доступа
+const char *ssid = "";            // Имя вайфай точки доступа
+const char *pass = "";          // Пароль от точки доступа
                                          //Подключение к MQTT серверу
-const char *mqtt_server = "m7.wqtt.ru";  // Имя сервера MQTT
-const int mqtt_port = 15128;             // Порт для подключения к серверу MQTT
-const char *mqtt_user = "u_QPTT9R";      // Логи от сервер
-const char *mqtt_pass = "fAhauOpC";      // Пароль от сервера
+const char *mqtt_server = "";  // Имя сервера MQTT
+const int mqtt_port = ;             // Порт для подключения к серверу MQTT
+const char *mqtt_user = "";      // Логи от сервер
+const char *mqtt_pass = "";      // Пароль от сервера
 
 
 //Функция получения данных от сервера
