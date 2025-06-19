@@ -4,13 +4,13 @@
 int pelmeni = 2; 
 int LED = 13;
     //Настройка Wi-Fi 
-const char *ssid = "ZTE MF920RU_6FC112";    // Имя вайфай точки доступа 
-const char *pass = "YE5YG7B5ZH";            // Пароль от точки доступа 
+const char *ssid = "";    // Имя вайфай точки доступа 
+const char *pass = "";            // Пароль от точки доступа 
     //Настройка MQTT
-const char *mqtt_server = "m7.wqtt.ru";     // Имя сервера MQTT 
-const int mqtt_port = 15128;                // Порт для подключения к серверу MQTT 
-const char *mqtt_user = "u_QPTT9R";         // Логи от сервер 
-const char *mqtt_pass = "fAhauOpC";         // Пароль от сервера 
+const char *mqtt_server = "";     // Имя сервера MQTT 
+const int mqtt_port = ;                // Порт для подключения к серверу MQTT 
+const char *mqtt_user = "";         // Логи от сервер 
+const char *mqtt_pass = "";         // Пароль от сервера 
     //Настройка Интернет-времени
 const char* ntpServer = "pool.ntp.org"; 
 const long gmtOffset_sec = 3600; 
