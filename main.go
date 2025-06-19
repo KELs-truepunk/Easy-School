@@ -30,10 +30,10 @@ type Room struct {
 
 var (
 	config = Config{
-		MQTTBroker:   "tcp://m7.wqtt.ru:15128",
-		MQTTUsername: "u_QPTT9R",
-		MQTTPassword: "fAhauOpC",
-		BotToken:     "7827011556:AAEW2JiNoBi86IbqPK656Pi9_4KAwjk3pFI",
+		MQTTBroker:   "",
+		MQTTUsername: "",
+		MQTTPassword: "",
+		BotToken:     "",
 	}
 
 	// Список доступных кабинетов
